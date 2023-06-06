@@ -36,8 +36,6 @@ locals {
   tags = {
     environment     = var.env
     created_by      = "Terraform"
-    application     = "K PIM Product API"
-    IT-Owner        = "sergei.ilin@kesko.fi"
   }
 }
 
