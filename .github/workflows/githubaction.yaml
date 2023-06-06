@@ -6,7 +6,7 @@ on:
       - feature/test
       - main
     paths:
-      - <Terraform Code Folder Name/Path>/**
+      - Infrastructure/**
       - .github/workflows/githubaction.yaml
   pull_request:
     paths:
@@ -16,7 +16,7 @@ on:
 
 defaults:
   run:
-    working-directory: ./<Terraform Code Folder Name/Path>
+    working-directory: ./Infrastructure
 
 env:
   ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID_DEV }}    --ClientID
