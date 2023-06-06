@@ -1,0 +1,256 @@
+name: 'TerraformGithubAction'
+
+on:
+  push:
+    branches:
+      - feature/test
+      - main
+    paths:
+      - <Terraform Code Folder Name/Path>/**
+      - .github/workflows/githubaction.yaml
+  pull_request:
+    paths:
+      - InfrastructureLF/**
+      - .github/workflows/githubaction.yaml
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: ./<Terraform Code Folder Name/Path>
+
+env:
+  ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID_DEV }}    --ClientID
+  ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}   --ClientSecret
+  ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}  --SubscriptionId
+  ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}  --TenantId
+  working-directory: ./<Terraform Code Folder Name/Path>
+  terraform-version: 1.4.0
+
+jobs:
+  tflint:
+    runs-on: self-hosted
+
+    steps:
+    - name: Clone repo
+      uses: actions/checkout@v3
+
+    - name: Setup tflint
+      uses: terraform-linters/setup-tflint@v2
+      with:
+        tflint_version: latest
+
+    - name: Init tflint
+      run: tflint --init
+
+    - name: tflint
+      run: tflint -f compact
+
+  validate:
+    name: 'terraform validate'
+    runs-on: self-hosted
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v3
+
+    - name: setup terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: ${{ env.terraform-version }}
+
+    - name: Read backend env json
+      id: backend
+      uses: juliangruber/read-file-action@v1
+      with:
+        path: ${{ env.working-directory }}/terraform/env/dev/env.json
+
+    - name: initialize backend
+      uses: azure/CLI@v1
+      with:
+        azcliversion:  2.33.1
+        inlineScript: |
+          az login --service-principal -u $ARM_CLIENT_ID -p=$ARM_CLIENT_SECRET --tenant $ARM_TENANT_ID
+          bash InfrastructureLF/lib/backend.sh
+      env:
+        terraformBackendLocation: ${{ fromJson(steps.backend.outputs.content).backend.location }}
+        terraformBackendResourceGroup: ${{ fromJson(steps.backend.outputs.content).backend.resource_group_name }}
+        terraformBackendStorageAccount: ${{ fromJson(steps.backend.outputs.content).backend.storage_account_name }}
+        terraformBackendStorageContainer: ${{ fromJson(steps.backend.outputs.content).backend.container_name }}
+        terraformRemoteStateFile: ${{ fromJson(steps.backend.outputs.content).backend.key }}
+        tags: ${{ fromJson(steps.backend.outputs.content).backend.tags }}
+        subscription_id: ${{ fromJson(steps.backend.outputs.content).backend.subscription_id }}
+
+    - name: setup node
+      uses: actions/setup-node@v3
+      with:
+        node-version: 16
+
+    - name: init
+      run: |
+        cd ./terraform/env/dev/
+        bash ./init.sh
+      env:
+        terraformBackendLocation: ${{ fromJson(steps.backend.outputs.content).backend.location }}
+        terraformBackendResourceGroup: ${{ fromJson(steps.backend.outputs.content).backend.resource_group_name }}
+        terraformBackendStorageAccount: ${{ fromJson(steps.backend.outputs.content).backend.storage_account_name }}
+        terraformBackendStorageContainer: ${{ fromJson(steps.backend.outputs.content).backend.container_name }}
+        terraformRemoteStateFile: ${{ fromJson(steps.backend.outputs.content).backend.key }}
+        subscription_id: ${{ fromJson(steps.backend.outputs.content).backend.subscription_id }}
+    
+    - name: validate
+      run: terraform validate
+
+  plan:
+    needs:
+      - validate
+    name: 'terraform plan'
+    runs-on: self-hosted
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v3
+
+    - name: setup terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: ${{ env.terraform-version }}
+
+    - name: Read backend env json
+      id: backend
+      uses: juliangruber/read-file-action@v1
+      with:
+        path: ${{ env.working-directory }}/terraform/env/dev/env.json
+  
+    - name: setup node
+      uses: actions/setup-node@v3
+      with:
+        node-version: 16
+
+    - name: init
+      run: |
+        cd ./terraform/env/dev/
+        bash ./init.sh
+      env:
+        terraformBackendLocation: ${{ fromJson(steps.backend.outputs.content).backend.location }}
+        terraformBackendResourceGroup: ${{ fromJson(steps.backend.outputs.content).backend.resource_group_name }}
+        terraformBackendStorageAccount: ${{ fromJson(steps.backend.outputs.content).backend.storage_account_name }}
+        terraformBackendStorageContainer: ${{ fromJson(steps.backend.outputs.content).backend.container_name }}
+        terraformRemoteStateFile: ${{ fromJson(steps.backend.outputs.content).backend.key }}
+        subscription_id: ${{ fromJson(steps.backend.outputs.content).backend.subscription_id }}
+
+    - name: plan
+      run: |
+        cd ./terraform/env/dev/
+        terraform plan -out ./tf.plan
+      env:
+        ARM_SUBSCRIPTION_ID: ${{ fromJson(steps.backend.outputs.content).backend.subscription_id }}
+
+    - name: 'save plan'
+      uses: actions/upload-artifact@v3
+      with:
+        name: tf-plan
+        path: ${{ env.working-directory }}/terraform/env/dev/tf.plan
+
+  show:
+    needs:
+      - validate
+      - plan
+    name: 'terraform show'
+    runs-on: self-hosted
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v3
+
+    - name: setup terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: ${{ env.terraform-version }}
+
+    - name: Read backend env json
+      id: backend
+      uses: juliangruber/read-file-action@v1
+      with:
+        path: ${{ env.working-directory }}/terraform/env/dev/env.json
+
+    - name: setup node
+      uses: actions/setup-node@v3
+      with:
+        node-version: 16
+
+    - name: init
+      run: |
+        cd ./terraform/env/dev/
+        bash ./init.sh
+      env:
+        terraformBackendLocation: ${{ fromJson(steps.backend.outputs.content).backend.location }}
+        terraformBackendResourceGroup: ${{ fromJson(steps.backend.outputs.content).backend.resource_group_name }}
+        terraformBackendStorageAccount: ${{ fromJson(steps.backend.outputs.content).backend.storage_account_name }}
+        terraformBackendStorageContainer: ${{ fromJson(steps.backend.outputs.content).backend.container_name }}
+        terraformRemoteStateFile: ${{ fromJson(steps.backend.outputs.content).backend.key }}
+        subscription_id: ${{ fromJson(steps.backend.outputs.content).backend.subscription_id }}
+
+    - name: 'load plan'
+      uses: actions/download-artifact@v3
+      with:
+        name: tf-plan
+        path: ${{ env.working-directory }}/terraform/env/dev/
+
+    - name: 'show plan'
+      run: |
+        cd ./terraform/env/dev/
+        terraform show ./tf.plan
+
+  apply:
+    if: github.ref == 'refs/heads/main' && contains(fromJson('["push", "workflow_dispatch"]'), github.event_name)
+    needs:
+      - plan
+      - show
+    environment: nonproduction
+    name: 'terraform apply'
+    runs-on: self-hosted
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v3
+
+    - name: setup terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: ${{ env.terraform-version }}
+
+    - name: Read backend env json
+      id: backend
+      uses: juliangruber/read-file-action@v1
+      with:
+        path: ${{ env.working-directory }}/terraform/env/dev/env.json
+
+    - name: setup node
+      uses: actions/setup-node@v3
+      with:
+        node-version: 16
+
+    - name: init
+      run: |
+        cd ./terraform/env/dev/
+        bash ./init.sh
+      env:
+        terraformBackendLocation: ${{ fromJson(steps.backend.outputs.content).backend.location }}
+        terraformBackendResourceGroup: ${{ fromJson(steps.backend.outputs.content).backend.resource_group_name }}
+        terraformBackendStorageAccount: ${{ fromJson(steps.backend.outputs.content).backend.storage_account_name }}
+        terraformBackendStorageContainer: ${{ fromJson(steps.backend.outputs.content).backend.container_name }}
+        terraformRemoteStateFile: ${{ fromJson(steps.backend.outputs.content).backend.key }}
+        subscription_id: ${{ fromJson(steps.backend.outputs.content).backend.subscription_id }}
+
+    - name: 'load plan'
+      uses: actions/download-artifact@v3
+      with:
+        name: tf-plan
+        path: ${{ env.working-directory }}/terraform/env/dev/
+
+    - name: apply
+      run: |
+        cd ./terraform/env/dev/
+        terraform apply -auto-approve ./tf.plan
+      env:
+        ARM_SUBSCRIPTION_ID: ${{ fromJson(steps.backend.outputs.content).backend.subscription_id }}
