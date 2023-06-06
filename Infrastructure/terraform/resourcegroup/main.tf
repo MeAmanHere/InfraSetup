@@ -1,3 +1,3 @@
-data "azurerm_resource_group" "kpim_rg" {
+data "azurerm_resource_group" "rg" {
   name = "<name of rg>"
 }
