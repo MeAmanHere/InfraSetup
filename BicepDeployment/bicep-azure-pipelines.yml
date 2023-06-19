@@ -1,0 +1,165 @@
+variables:
+  nonProdAzureSubscription: ""
+  prodAzureSubscription: ""
+  location: westeurope
+  # folderPath: <>
+  # bicepFileName: <>.bicep
+
+# trigger:
+#   branches:
+#     include:
+#     - main
+#   paths: 
+#     include:
+#     - $(folderPath)/*
+
+# pr:
+#   autoCancel: "true"
+#   branches:
+#     include:
+#       - main
+#   paths:
+#     include:
+#       - $(folderPath)/*
+
+trigger:
+  none
+  
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+  - stage: dev
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    displayName: dev
+    jobs:
+
+      - job: Validate_Dev
+        displayName: Validate
+        steps:
+        - script: echo $(Build.SourcesDirectory)
+
+        - task: AzureCLI@2
+          inputs:
+            azureSubscription: $(nonProdAzureSubscription)
+            scriptType: 'bash'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              az deployment sub validate \
+              --name $(Build.BuildNumber) \
+              --location $(location) \
+              --template-file $(folderPath)/$(bicepFileName) \
+              --parameters $(folderPath)/main.parameters.dev.json
+          displayName: Validate Code
+
+      - deployment: Deploy_Dev
+        displayName: Deploy
+        environment: dev
+        dependsOn: Validate_Dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+              - checkout: self
+              - task: AzureCLI@2
+                inputs:
+                  azureSubscription: $(nonProdAzureSubscription)
+                  scriptType: 'bash'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    az deployment sub create \
+                    --name '$(Build.DefinitionName)-$(Build.BuildNumber)' \
+                    --location $(location) \
+                    --template-file $(folderPath)/$(bicepFileName) \
+                    --parameters $(folderPath)/main.parameters.dev.json
+                displayName: Deploy Code
+
+  - stage: test
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    displayName: test
+    jobs:
+
+      - job: Validate_Test
+        displayName: Validate
+        steps:
+        - script: echo $(Build.SourcesDirectory)
+
+        - task: AzureCLI@2
+          inputs:
+            azureSubscription: $(nonProdAzureSubscription)
+            scriptType: 'bash'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              az deployment sub validate \
+              --name $(Build.BuildNumber) \
+              --location $(location) \
+              --template-file $(folderPath)/$(bicepFileName) \
+              --parameters $(folderPath)/main.parameters.test.json
+          displayName: Validate Code
+
+      - deployment: Deploy_Test
+        displayName: Deploy
+        environment: test
+        dependsOn: Validate_Test
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+              - checkout: self
+              - task: AzureCLI@2
+                inputs:
+                  azureSubscription: $(nonProdAzureSubscription)
+                  scriptType: 'bash'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    az deployment sub create \
+                    --name '$(Build.DefinitionName)-$(Build.BuildNumber)' \
+                    --location $(location) \
+                    --template-file $(folderPath)/$(bicepFileName) \
+                    --parameters $(folderPath)/main.parameters.test.json
+                displayName: Deploy Code
+
+  - stage: prod
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    displayName: prod
+    jobs:
+
+      - job: Validate_Prod
+        displayName: Validate
+        steps:
+        - script: echo $(Build.SourcesDirectory)
+
+        - task: AzureCLI@2
+          inputs:
+            azureSubscription: $(nonProdAzureSubscription)
+            scriptType: 'bash'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              az deployment sub validate \
+              --name $(Build.BuildNumber) \
+              --location $(location) \
+              --template-file $(folderPath)/$(bicepFileName) \
+              --parameters $(folderPath)/main.parameters.prod.json
+          displayName: Validate Code
+
+      - deployment: Deploy_Prod
+        displayName: Deploy
+        environment: prod
+        dependsOn: Validate_Prod
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+              - checkout: self
+              - task: AzureCLI@2
+                inputs:
+                  azureSubscription: $(prodAzureSubscription)
+                  scriptType: 'bash'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    az deployment sub create \
+                    --name '$(Build.DefinitionName)-$(Build.BuildNumber)' \
+                    --location $(location) \
+                    --template-file $(folderPath)/$(bicepFileName) \
+                    --parameters $(folderPath)/main.parameters.prod.json
+                displayName: Deploy Code
